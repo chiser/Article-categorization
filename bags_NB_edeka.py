@@ -4,6 +4,8 @@ Created on Fri May 24 23:33:36 2019
 
 @author: chise
 """
+
+## Import libraries
 import csv
 import os
 import pandas as pd
@@ -13,8 +15,10 @@ from sklearn.feature_extraction.text import CountVectorizer
 from gensim.models import Word2Vec, Phrases
 import nltk
 import itertools
+from sklearn.naive_bayes import MultinomialNB
+from sklearn import svm
 
-## Funktionen
+## Funktions
 def tokenize_sentences(sentences):
     words = []
     for sentence in sentences:
@@ -41,35 +45,32 @@ def bagofwords(sentence, words):
                 
     return np.array(bag)
 
-## Change pfad
+## Change directory
 
 os.chdir('D:/')
 
-## Importieren
+## Import data
+
 df=pd.read_csv('edeka_gross.csv', sep=',',header=None)
+
+## Save in sentences the product names, tokenize them and create a vocabulary list
 
 sentences=df.values[:,0]
 vectorizer = CountVectorizer(analyzer = "word", tokenizer = None, preprocessor = None, stop_words = None, max_features = 5000) 
 train_data_features = vectorizer.fit_transform(sentences)
 
-
-df_test=pd.DataFrame(df.values[3000:-1,:])
-df=pd.DataFrame(df.values[1:3000,:])
-#df_test=pd.read_csv('edeka.csv', sep=',',header=None)
-#df.values
-
-
-## Split wörtern in produkte. Für Kategorien bleiben in moment so wie es ist
-
-#product_split = [df.values[i,0].split() for i in range(df.values[:,0])]
-#newlist = [word for line in mylist for word in line.split()]
-
-## Produkte und Kategorie array
+# Produkte und Kategorie array zum anschauen
 Produkte=np.array(df.values[:,0])
 Kategorie=np.array(df.values[:,1])
 
+## Divide data in training data and test data
+
+df_test=pd.DataFrame(df.values[3000:-1,:])
+df=pd.DataFrame(df.values[1:3000,:])
+
+## Split words in products
 '''
-## Create a dictionary: die ganze Wörter Vielfahlt für beides: Kategorien und Produkte
+## Create a dictionary: for all the words in Categories and Products. A different way independent of sklearn
 
 sentences=df.values[:,0]
 #sentences = ["Acer spin","Acer Aspire","McBook Pro","McBook Air","Lenovo Yoga"]
@@ -81,12 +82,12 @@ bagofwords(df.values[1,0], vocabulary)
 
 #bags_train = bagofwords(Produkte, vocabulary)
 '''
-### Alles wieder aber mit sklearn funktionen
+### Create a bag of words for the products with sklearn functions
 
-#vectorizer.transform([df.values[1,0],df.values[2,0]]).toarray()
 bags_training = vectorizer.transform(Produkte).toarray()
 
 ## Try Word2Vec
+
 sentences = nltk.sent_tokenize(Produkte)
 
 all_words = [sent.split(" ") for sent in sentences]
@@ -98,9 +99,20 @@ print(vocabulary)
 v1 = word2vec.wv['240']
 sim_words = word2vec.wv.most_similar('240')    
 
-for item in vocabulary:
-    word2vec.wv[item]
+bags_word2vec=[]
+for key in vocabulary.keys():
+    bags_word2vec.append(word2vec.wv[key])
     
+bags_word2vec=[]
+for item in all_words:
+    bags_word2vec.append(word2vec.wv[item])
+    print(item)
+
+bags_word2vec = np.asarray(bags_word2vec)
+bags_word2vec.astype(int)
+    
+clf = MultinomialNB()
+clf.fit(bags_word2vec, Kategorie)
 '''
 ## Kategorie in one hot encoding konvertieren
 
@@ -114,7 +126,6 @@ train_data_cat = vectorizer.fit_transform(sentences_cat)
 
 #X = np.random.randint(5, size=(6, 100)) {array-like, sparse matrix}, shape = [n_samples, n_features]
 #y = np.array([1, 2, 3, 4, 5, 6]) array-like, shape = [n_samples]
-from sklearn.naive_bayes import MultinomialNB
 clf = MultinomialNB()
 clf.fit(bags_training, Kategorie)
 
@@ -142,3 +153,22 @@ ratio=np.sum(a == b)/len(a)
 print(ratio)   ### 0.49 vorhersagbarkeit
 #MultinomialNB(alpha=1.0, class_prior=None, fit_prior=True)
 #print(clf.predict(X[2:3]))
+
+
+## SVM to test bags of words
+
+X = bags_training
+y = Kategorie
+clf = svm.SVC(gamma='scale', decision_function_shape='ovo')
+clf.fit(X, y) 
+prediction=clf.predict(bags_test)
+predicted=pd.DataFrame(prediction) 
+groundtruth=pd.DataFrame(Kategorie_test)
+
+frames = [predicted, groundtruth,pd.DataFrame(df.values[:,0])]
+result = pd.concat(frames,axis=1)
+
+a=np.array(predicted)
+b=np.array(groundtruth)
+ratio=np.sum(a == b)/len(a)
+print(ratio)   ### 0.49 vorhersagbarkeit
