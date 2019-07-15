@@ -9,26 +9,32 @@ Created on Fri May 24 23:33:36 2019
 import os
 import pandas as pd
 import numpy as np
-import re
-from sklearn.manifold import TSNE
-from sklearn.feature_extraction.text import CountVectorizer
-from gensim.models import Word2Vec
-import nltk
-from sklearn.naive_bayes import MultinomialNB
-from sklearn import svm
-import multiprocessing
+#import re
+import matplotlib.pyplot as plt
+#from gensim.models import Word2Vec
+#import nltk
+#import multiprocessing
 import seaborn as sns
-from gensim import corpora, models
+import pickle
+#from gensim import corpora, models
+#from sklearn.manifold import TSNE
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.svm import SVC
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.utils import resample
-from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, classification_report
+#from sklearn.utils import resample
+from sklearn.metrics import confusion_matrix,roc_auc_score, accuracy_score, f1_score, classification_report
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeClassifier, export_graphviz
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
 #nltk.download('punkt')
 #nltk.download('stopwords')
 
 ### Functions
+'''
 def tokenize_sentences(sentences):
     words = []
     for sentence in sentences:
@@ -77,16 +83,16 @@ def keepAlpha(sentence):
 #data['comment_text'] = data['comment_text'].apply(cleanHtml)
 #data['comment_text'] = data['comment_text'].apply(cleanPunc)
 #data['comment_text'] = data['comment_text'].apply(keepAlpha)
-
+'''
 ### Change directory
-os.chdir('D:/')
+os.chdir('D:/repositories/anybill')
 
 ### Import data
 df=pd.read_csv('edeka_gross.csv', sep=',')
 
 ## Check how balanced are the classes. Two options: balance data or F1-score
-sns.countplot(df['category'],label="Count")
-plt.show()
+#sns.countplot(df['category'],label="Count")
+#plt.show()
 
 ## Delete too small categories
 categ_classes=df.groupby('category').agg('count')
@@ -95,7 +101,7 @@ df_clean=df[(df['category'] != exclude.index[0]) & (df['category'] != exclude.in
 categ_classes=categ_classes[(categ_classes.index != exclude.index[0]) & (categ_classes.index != exclude.index[1]) & (categ_classes.index != exclude.index[2])]
 
 ########## Down and upsample under and overrepresented categories ###################
-
+'''
 # Separate majority and minority classes
 df_majority = df_clean[df_clean.category == 'nonfood ha']
 df_minority = df_clean[df_clean.category == 'brotaufstriche']
@@ -115,8 +121,7 @@ df_upsampled = pd.concat([df_majority_downsampled, df_minority_upsampled])
  
 # Display new class counts
 df_upsampled.category.value_counts()
-
-
+'''
 ################ Divide data in training and test data  ##################
 # Products and Categories in numpy array for further processing
 Products=df_clean['name']
@@ -142,12 +147,14 @@ X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.
 #sentences_bow=df['name']
 vectorizer = CountVectorizer(analyzer = "word", tokenizer = None, preprocessor = None, stop_words = None, max_features = 5000) 
 train_data_features = vectorizer.fit_transform(np.array(df_clean['name']))
+filename = 'vectorizer_model.pkl'
+pickle.dump(vectorizer, open(filename, 'wb'))
 features=vectorizer.vocabulary_
 bow_training = vectorizer.transform(np.array(X_train)).toarray()
 bow_val = vectorizer.transform(np.array(X_val)).toarray()
 bow_test = vectorizer.transform(np.array(X_test)).toarray()
 ####################### LDA  ################################
-
+'''
 tfidf = models.TfidfModel()
 corpus_tfidf = tfidf[bow_training]
 from pprint import pprint
@@ -158,9 +165,9 @@ for doc in corpus_tfidf:
 lda_model = gensim.models.LdaMulticore(bow_training, num_topics=10, id2word=dictionary, passes=2, workers=2)
 for idx, topic in lda_model.print_topics(-1):
     print('Topic: {} \nWords: {}'.format(idx, topic))
-
+'''
 ################################## Try Word2Vec  #####################
-
+'''
 ##Import text from edeka products and save it in corpus_raw. Sorting by category does not work well
 tokenizer = nltk.data.load('tokenizers/punkt/english.pickle')
 raw_sentences = tokenizer.tokenize(corpus_raw)
@@ -290,7 +297,7 @@ for item in all_words:
     
 clf = MultinomialNB()
 clf.fit(bags_word2vec, Categories)
-'''
+
 ## Kategorie in one hot encoding konvertieren
 
 sentences_cat=df.values[:,1]
@@ -301,10 +308,52 @@ train_data_cat = vectorizer.fit_transform(sentences_cat)
 '''
 ################# Naive Bayes für multinomial data  #########################
 
-nb_cl = MultinomialNB()
+nb_cl = MultinomialNB(alpha=0.000001)
 nb_cl.fit(bow_training, y_train)
 #nb_cl_bow = MultinomialNB()
 #nb_cl_bow.fit(bow_training, bow__y_training)
+# save the model to disk
+filename = 'edeka_model.pkl'
+pickle.dump(nb_cl, open(filename, 'wb'))
+
+#Save the model
+# serialize model to JSON
+#model_json = nb_cl.to_json()
+#with open("edeka.json", "w") as json_file:
+#    json_file.write(model_json)
+# serialize weights to HDF5
+#nb_cl.save_weights("edeka.h5")
+#print("Saved model to disk") 
+'''
+## Set the parameters by cross-validation
+nb_cl_parameters = [{'alpha': [0,0.01, 0.1, 0.5, 1]}]# the best is alpha 0.01
+nb_cl_scores = ['balanced_accuracy', 'f1_weighted','roc_auc']#['precision', 'recall']
+
+for score in nb_cl_scores:
+    print("# Tuning hyper-parameters for %s" % score)
+    nb_cl = GridSearchCV(MultinomialNB(), nb_cl_parameters, cv=5,
+                       scoring=score)
+    nb_cl.fit(bow_training, y_train)
+    print("Best parameters set found on development set:")
+    print(nb_cl.best_params_)
+    print("Grid scores on development set:")
+    means = nb_cl.cv_results_['mean_test_score']
+    stds = nb_cl.cv_results_['std_test_score']
+    for mean, std, params in zip(means, stds, nb_cl.cv_results_['params']):
+        print("%0.3f (+/-%0.03f) for %r"
+              % (mean, std * 2, params))
+    print("Detailed classification report:")
+    print("The model is trained on the full development set.")
+    print("The scores are computed on the full evaluation set.")
+    nb_pred=nb_cl.predict(bow_val)
+    print(classification_report(y_val, nb_pred))
+    
+##Plot a confusion matrix
+mat = confusion_matrix(y_val, nb_pred)
+sns.heatmap(mat.T, square=True, annot=True, fmt='d', cbar=False,
+            xticklabels=categ_classes.index, yticklabels=categ_classes.index)
+plt.xlabel('true label')
+plt.ylabel('predicted label')
 
 ## Compare predictions for test data with groundtruth
 prediction = pd.Series(nb_cl.predict(bow_test))
@@ -312,13 +361,9 @@ log_prediction = nb_cl.predict_log_proba(bow_test)
 coeficients = nb_cl._get_coef()
 
 ## Checking results: How's our accuracy?
-a=np.array(prediction)
-b=np.array(y_test)
-ratio=np.sum(a == b)/len(a)
-print(ratio)   ### 0.49 vorhersagbarkeit. After taking away small classes 0.61
+### 0.49 vorhersagbarkeit. After taking away small classes 0.61
 print(accuracy_score(y_test, prediction) )
-
-## Calculate accuracy with ROC
+# Calculate accuracy with ROC
 lb = LabelBinarizer()
 lb.fit(y_test)
 
@@ -334,7 +379,7 @@ classes_predicted=nb_cl.classes_
 print(roc_auc_score(truth, prob_y) )
 
 ## SVM to test bags of words
-svm_cl = svm.SVC(gamma='scale', decision_function_shape='ovo',class_weight='balanced', probability=True)
+svm_cl = SVC(gamma='scale', decision_function_shape='ovo',class_weight='balanced', probability=True)
 svm_cl.fit(bow_training, y_train) 
 
 ## Compare predictions for test data with groundtruth
@@ -343,10 +388,7 @@ prediction = pd.Series(svm_cl.predict(bow_test))
 coeficients = svm_cl._get_coef()
 
 ## Checking results: How's our accuracy?
-a=np.array(prediction)
-b=np.array(y_test)
-ratio=np.sum(a == b)/len(a)
-print(ratio)   ### 0.55 after eliminating low representative classes
+## 0.55 after eliminating low representative classes
 print(accuracy_score(y_test, prediction) )
 
 ## Calculate accuracy with ROC
@@ -356,42 +398,29 @@ f1_score(truth, pred, average='macro') #0.57
 
 ######### Eventually I would implement all like this ###################
 # Set the parameters by cross-validation
-tuned_parameters = [{'kernel': ['rbf'], 'gamma': [1e-3, 1e-4],
+svm_parameters = [{'kernel': ['rbf'], 'gamma': [1e-3, 1e-4],
                      'C': [1, 10, 100, 1000]},
                     {'kernel': ['linear'], 'C': [1, 10, 100, 1000]}]
 
-scores = ['precision', 'recall']
+svm_scores = ['precision', 'recall']
 
-for score in scores:
+for score in svm_scores:
     print("# Tuning hyper-parameters for %s" % score)
-    print()
-
-    clf = GridSearchCV(SVC(), tuned_parameters, cv=5,
+    svm_cl = GridSearchCV(SVC(), svm_parameters, cv=5,
                        scoring='%s_macro' % score)
-    clf.fit(X_train, y_train)
-
+    svm_cl.fit(bow_training, y_train)
     print("Best parameters set found on development set:")
-    print()
-    print(clf.best_params_)
-    print()
+    print(svm_cl.best_params_)
     print("Grid scores on development set:")
-    print()
-    means = clf.cv_results_['mean_test_score']
-    stds = clf.cv_results_['std_test_score']
-    for mean, std, params in zip(means, stds, clf.cv_results_['params']):
+    means = svm_cl.cv_results_['mean_test_score']
+    stds = svm_cl.cv_results_['std_test_score']
+    for mean, std, params in zip(means, stds, svm_cl.cv_results_['params']):
         print("%0.3f (+/-%0.03f) for %r"
               % (mean, std * 2, params))
-    print()
-
     print("Detailed classification report:")
-    print()
     print("The model is trained on the full development set.")
     print("The scores are computed on the full evaluation set.")
-    print()
-    y_true, y_pred = y_test, clf.predict(X_test)
-    print(classification_report(y_true, y_pred))
-    print()
-
+    print(classification_report(y_val, svm_cl.predict(bow_val)))
 
 ############################## Logistic regression  #########################
 logreg = LogisticRegression()
@@ -408,7 +437,6 @@ print('Accuracy of Decision Tree classifier on training set: {:.2f}'
 print('Accuracy of Decision Tree classifier on test set: {:.2f}'
      .format(DT_cl.score(bow_test, y_test)))  ##0.63
 #Visualize
-from sklearn.tree import export_graphviz
 dot_data = export_graphviz(DT_cl, out_file=None, 
                      feature_names=features,  
                      class_names=categ_classes,  
@@ -418,7 +446,6 @@ graph = graphviz.Source(dot_data)
 graph.render("edeka") 
 
 ##############################  Kmeans classifier  ##########################
-from sklearn.neighbors import KNeighborsClassifier
 knn = KNeighborsClassifier()
 knn.fit(bow_training, y_train)
 print('Accuracy of K-NN classifier on training set: {:.2f}'
@@ -427,7 +454,6 @@ print('Accuracy of K-NN classifier on test set: {:.2f}'
      .format(knn.score(bow_test, y_test)))#0.48
 
 #######################  Linear Discriminant Analysis #######################
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 lda = LinearDiscriminantAnalysis()
 lda.fit(bow_training, y_train)
 print('Accuracy of LDA classifier on training set: {:.2f}'
@@ -436,7 +462,6 @@ print('Accuracy of LDA classifier on test set: {:.2f}'
      .format(lda.score(bow_test, y_test))) #0.52
 
 ####################Random Forest. Its good for imbalanced data  ############
-from sklearn.ensemble import RandomForestClassifier
 RF_cl = RandomForestClassifier(n_estimators=100)
 
 # Train
@@ -450,6 +475,37 @@ export_graphviz(RF_cl, out_file=None,
                 class_names = categ_classes,
                 rounded = True, proportion = False, 
                 precision = 2, filled = True)
+
+RF_cl_parameters = [{'criterion': ['gini'], 'n_estimators': [5, 10, 50, 100, 500]},
+                    {'criterion': ['entropy'], 'n_estimators': [5, 10, 50, 100, 500]}]
+RF_cl_scores = ['balanced_accuracy', 'f1_weighted','roc_auc']
+
+for score in RF_cl_scores:
+    print("# Tuning hyper-parameters for %s" % score)
+    RF_cl = GridSearchCV(RandomForestClassifier(), RF_cl_parameters, cv=5,
+                       scoring='%s_macro' % score)
+    RF_cl.fit(bow_training, y_train)
+    print("Best parameters set found on development set:")
+    print(RF_cl.best_params_)
+    print("Grid scores on development set:")
+    means = RF_cl.cv_results_['mean_test_score']
+    stds = RF_cl.cv_results_['std_test_score']
+    for mean, std, params in zip(means, stds, RF_cl.cv_results_['params']):
+        print("%0.3f (+/-%0.03f) for %r"
+              % (mean, std * 2, params))
+    print("Detailed classification report:")
+    print("The model is trained on the full development set.")
+    print("The scores are computed on the full evaluation set.")
+    RF_pred=RF_cl.predict(bow_val)
+    print(classification_report(y_val, RF_pred))
+    
+##Plot a confusion matrix
+mat = confusion_matrix(y_val, nb_pred)
+sns.heatmap(mat.T, square=True, annot=True, fmt='d', cbar=False,
+            xticklabels=categ_classes.index, yticklabels=categ_classes.index)
+plt.xlabel('true label')
+plt.ylabel('predicted label')
+
 
 ## Check multilabel classification where several labels could belong to one product
 #Micro and macro averaging for multilabel that count the true positives and negatives etc. for all classes
@@ -519,3 +575,4 @@ plt.axis('off')
 plt.title("Clean",fontsize=40)
 plt.imshow(cloud_clean)
 # Same code can be used to generate wordclouds of other categories.
+'''

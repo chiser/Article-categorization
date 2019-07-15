@@ -1,0 +1,16 @@
+FROM python:3.6.8
+MAINTAINER Christian Rohrsen "christian.c.rohrsen@gmail.com"
+ 
+WORKDIR /
+ 
+COPY requirements.txt /
+RUN pip install -r ./requirements.txt
+ 
+COPY model_as_api.py /
+COPY edeka_model.pkl vectorizer_model.pkl /
+ 
+EXPOSE 5000
+ 
+ENTRYPOINT python ./model_as_api.py
+ 
+#save this file as 'Dockerfile'
